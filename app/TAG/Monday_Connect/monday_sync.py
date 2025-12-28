@@ -247,8 +247,34 @@ class MondaySync:
 
         return changes
 
+    def create_backup(self) -> str:
+        """Create a backup of the Excel file before modifications"""
+        import shutil
+        from datetime import datetime
+
+        backup_dir = os.path.join(os.path.dirname(self.excel_path), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"Sales_backup_{timestamp}.xlsx"
+        backup_path = os.path.join(backup_dir, backup_filename)
+
+        shutil.copy2(self.excel_path, backup_path)
+        return backup_path
+
     def update_excel_cell(self, sheet_name: str, row: int, col_name: str, value: Any):
-        """Update a single cell in Excel using openpyxl"""
+        """
+        Update a single cell in Excel using openpyxl
+
+        WARNING: openpyxl may not preserve all Excel features (Data Validation, etc.)
+        A backup is created before any modifications.
+        """
+        # ALWAYS create backup before first modification
+        if not hasattr(self, '_backup_created') or not self._backup_created:
+            backup_path = self.create_backup()
+            self._backup_created = True
+            print(f"Backup created: {backup_path}")
+
         wb = load_workbook(self.excel_path)
         ws = wb[sheet_name]
 

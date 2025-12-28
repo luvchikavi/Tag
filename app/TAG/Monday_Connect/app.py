@@ -943,6 +943,12 @@ def render_monday_sync_tab():
     """Render the Monday.com sync tab with controls and change log"""
     st.subheader("Monday.com Data Sync")
 
+    # Warning about Excel modifications
+    st.warning("""
+    **Important:** Syncing will modify the Excel file. A backup will be automatically created
+    in the `backups/` folder before any changes are made.
+    """)
+
     # Initialize sync components
     try:
         sync = create_sync_instance(MONDAY_API_TOKEN)
@@ -1173,17 +1179,7 @@ def render_sidebar():
             last_sync = last_sync[:16].replace("T", " ")
         st.sidebar.text(f"Last sync: {last_sync}")
         st.sidebar.text(f"Changes: {status.get('last_sync_changes', 0)}")
-
-        # Quick sync button
-        if st.sidebar.button("Quick Sync", use_container_width=True):
-            with st.spinner("Syncing..."):
-                summary = sync.sync_data_base_clients(dry_run=False)
-                if summary.get("errors"):
-                    st.sidebar.error("Sync had errors")
-                else:
-                    st.sidebar.success(f"{summary['total_changes']} changes")
-                st.cache_data.clear()
-                st.rerun()
+        st.sidebar.caption("Use 'Monday.com Sync' tab for sync controls")
     except Exception as e:
         st.sidebar.warning("Sync unavailable")
 
