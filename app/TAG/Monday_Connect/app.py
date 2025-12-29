@@ -219,6 +219,15 @@ def format_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return formatted_df
 
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def _load_excel_data():
+    """Load Excel data with caching"""
+    excel_path = os.path.join(os.path.dirname(__file__), "Sales.xlsx")
+    if os.path.exists(excel_path):
+        return load_sample_data_from_excel(excel_path)
+    return None
+
+
 def load_data(use_monday: bool = False):
     """Load data from Monday.com or Excel file"""
     if use_monday and os.getenv("MONDAY_API_TOKEN"):
@@ -230,11 +239,8 @@ def load_data(use_monday: bool = False):
         except Exception as e:
             st.error(f"Error connecting to Monday.com: {e}")
 
-    # Fall back to Excel file
-    excel_path = os.path.join(os.path.dirname(__file__), "Sales.xlsx")
-    if os.path.exists(excel_path):
-        return load_sample_data_from_excel(excel_path)
-    return None
+    # Fall back to cached Excel data
+    return _load_excel_data()
 
 
 def get_excel_sheets():
@@ -440,8 +446,9 @@ def render_workplan_dashboard():
         st.dataframe(formatted_df, use_container_width=True, hide_index=True, height=400)
 
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_sheet_data(sheet_name: str) -> pd.DataFrame:
-    """Load data from a specific Excel sheet"""
+    """Load data from a specific Excel sheet (cached)"""
     excel_path = os.path.join(os.path.dirname(__file__), "Sales.xlsx")
     if os.path.exists(excel_path):
         df = pd.read_excel(excel_path, sheet_name=sheet_name)
@@ -451,6 +458,7 @@ def load_sheet_data(sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_all_project_data() -> pd.DataFrame:
     """Load and combine data from all project sheets for cross-section analysis"""
     excel_path = os.path.join(os.path.dirname(__file__), "Sales.xlsx")
@@ -915,17 +923,27 @@ def render_kpi_cards(data: dict):
         }
         .kpi-box {
             text-align: center;
-            padding: 6px 20px;
-            min-width: 100px;
-            height: 60px;
+            padding: 8px 10px;
+            flex: 1;
             border-right: 1px solid rgba(255,255,255,0.25);
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start;
+            justify-content: center;
         }
         .kpi-box:last-child {
             border-right: none;
+        }
+        .kpi-row-label {
+            min-width: 100px;
+            max-width: 100px;
+        }
+        .kpi-boxes {
+            flex: 1;
+            display: flex;
+        }
+        .kpi-row {
+            min-height: 55px;
         }
         .kpi-value {
             font-size: 1.2rem;
@@ -968,7 +986,6 @@ def render_kpi_cards(data: dict):
                 <div class="kpi-box">
                     <p class="kpi-value">{int(total_units):,}</p>
                     <p class="kpi-label">Total Units</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{int(units_sold):,}</p>
@@ -978,17 +995,14 @@ def render_kpi_cards(data: dict):
                 <div class="kpi-box">
                     <p class="kpi-value">{int(units_blocked):,}</p>
                     <p class="kpi-label">Blocked</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{int(units_reserved):,}</p>
                     <p class="kpi-label">Reserved</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{int(inventory):,}</p>
                     <p class="kpi-label">Available</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
             </div>
         </div>
@@ -1000,22 +1014,18 @@ def render_kpi_cards(data: dict):
                 <div class="kpi-box">
                     <p class="kpi-value">{revenue_display}</p>
                     <p class="kpi-label">Revenue</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{predicted_display}</p>
                     <p class="kpi-label">Predicted</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{avg_price_display}</p>
                     <p class="kpi-label">Avg Price</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{avg_sqm_display}</p>
                     <p class="kpi-label">Avg €/m²</p>
-                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{year_goal_pct:.0%}</p>
