@@ -35,10 +35,9 @@ def get_monday_token():
 MONDAY_API_TOKEN = get_monday_token()
 
 # Authorized users (email: password_hash)
-# Password: TAG2025! (hashed)
 AUTHORIZED_USERS = {
     "gvili@tagaurbanic.com": hashlib.sha256("TAG2025!".encode()).hexdigest(),
-    "luvchik@drishti.com": hashlib.sha256("admin123".encode()).hexdigest(),
+    "luvchik@drishti.com": hashlib.sha256("Drishti2025!".encode()).hexdigest(),
 }
 
 # Developer emails (can see login logs)
