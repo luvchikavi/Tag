@@ -29,6 +29,7 @@ Thumbs.db
 # Logs
 *.log
 sync_changelog.json
+login_logs.json
 
 # Backups
 backups/

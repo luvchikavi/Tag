@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
+import json
 import hashlib
 from datetime import datetime
 from dotenv import load_dotenv
@@ -39,6 +40,71 @@ AUTHORIZED_USERS = {
     "gvili@tagaurbanic.com": hashlib.sha256("TAG2025!".encode()).hexdigest(),
     "admin@drishti.com": hashlib.sha256("admin123".encode()).hexdigest(),
 }
+
+# Developer emails (can see login logs)
+DEVELOPER_EMAILS = ["admin@drishti.com"]
+
+# Login tracking
+LOGIN_LOG_FILE = os.path.join(os.path.dirname(__file__), "login_logs.json")
+
+
+def log_login(email: str):
+    """Log a user login event"""
+    try:
+        # Load existing logs
+        if os.path.exists(LOGIN_LOG_FILE):
+            with open(LOGIN_LOG_FILE, 'r') as f:
+                logs = json.load(f)
+        else:
+            logs = []
+
+        # Add new login entry
+        logs.append({
+            "email": email,
+            "timestamp": datetime.now().isoformat(),
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "time": datetime.now().strftime("%H:%M:%S")
+        })
+
+        # Keep only last 500 entries
+        logs = logs[-500:]
+
+        # Save logs
+        with open(LOGIN_LOG_FILE, 'w') as f:
+            json.dump(logs, f, indent=2)
+    except Exception:
+        pass  # Silent fail - don't break login
+
+
+def get_login_stats() -> dict:
+    """Get login statistics for admin view"""
+    try:
+        if not os.path.exists(LOGIN_LOG_FILE):
+            return {"total_logins": 0, "unique_users": 0, "logs": []}
+
+        with open(LOGIN_LOG_FILE, 'r') as f:
+            logs = json.load(f)
+
+        # Calculate stats
+        emails = [log["email"] for log in logs]
+        unique_users = len(set(emails))
+
+        # Logins by user
+        logins_by_user = {}
+        for email in emails:
+            logins_by_user[email] = logins_by_user.get(email, 0) + 1
+
+        # Recent logins (last 50)
+        recent_logs = logs[-50:][::-1]  # Reverse for newest first
+
+        return {
+            "total_logins": len(logs),
+            "unique_users": unique_users,
+            "logins_by_user": logins_by_user,
+            "recent_logs": recent_logs
+        }
+    except Exception:
+        return {"total_logins": 0, "unique_users": 0, "logs": []}
 
 
 def check_authentication():
@@ -80,6 +146,7 @@ def login_page():
             if email_lower in AUTHORIZED_USERS and AUTHORIZED_USERS[email_lower] == password_hash:
                 st.session_state.authenticated = True
                 st.session_state.user_email = email_lower
+                log_login(email_lower)  # Track login
                 st.success("Login successful!")
                 st.rerun()
             else:
@@ -1851,6 +1918,24 @@ def render_sidebar():
             st.session_state.authenticated = False
             st.session_state.user_email = None
             st.rerun()
+
+        # Developer-only: Login Analytics
+        if st.session_state.user_email in DEVELOPER_EMAILS:
+            st.sidebar.markdown("---")
+            with st.sidebar.expander("📊 Login Analytics", expanded=False):
+                stats = get_login_stats()
+                st.metric("Total Logins", stats["total_logins"])
+                st.metric("Unique Users", stats["unique_users"])
+
+                if stats.get("logins_by_user"):
+                    st.markdown("**Logins by User:**")
+                    for email, count in stats["logins_by_user"].items():
+                        st.text(f"{email}: {count}")
+
+                if stats.get("recent_logs"):
+                    st.markdown("**Recent Logins:**")
+                    for log in stats["recent_logs"][:10]:
+                        st.caption(f"{log['date']} {log['time']} - {log['email']}")
 
     st.sidebar.markdown("---")
 
