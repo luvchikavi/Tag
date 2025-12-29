@@ -21,8 +21,17 @@ from change_logger import ChangeLogger
 # Load environment variables
 load_dotenv()
 
-# Monday.com API Token (can also be set via .env file)
-MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN", "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjYwMTM4MjQ2OSwiYWFpIjoxMSwidWlkIjo2MTY0NDEzOSwiaWFkIjoiMjAyNS0xMi0yOFQxNTo0MDo1Mi4yMjVaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjM2NzMyOTgsInJnbiI6ImV1YzEifQ.-rwpvYCc9YCxYJ_y5oTgfM8AC9jJvRmw4rjPe1mK9Q4")
+# Monday.com API Token - loaded from Streamlit secrets or environment
+def get_monday_token():
+    """Get Monday.com API token from Streamlit secrets or environment"""
+    try:
+        # Try Streamlit secrets first (for Streamlit Cloud)
+        return st.secrets["MONDAY_API_TOKEN"]
+    except:
+        # Fall back to environment variable (for local development)
+        return os.getenv("MONDAY_API_TOKEN", "")
+
+MONDAY_API_TOKEN = get_monday_token()
 
 # Authorized users (email: password_hash)
 # Password: TAG2025! (hashed)

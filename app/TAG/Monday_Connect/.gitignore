@@ -11,10 +11,12 @@ __pycache__/
 .vscode/
 *.swp
 *.swo
+.claude/
 
 # OS
 .DS_Store
 Thumbs.db
+~$*
 
 # Streamlit
 .streamlit/secrets.toml
@@ -26,3 +28,7 @@ Thumbs.db
 
 # Logs
 *.log
+sync_changelog.json
+
+# Backups
+backups/
