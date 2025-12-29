@@ -38,11 +38,11 @@ MONDAY_API_TOKEN = get_monday_token()
 # Password: TAG2025! (hashed)
 AUTHORIZED_USERS = {
     "gvili@tagaurbanic.com": hashlib.sha256("TAG2025!".encode()).hexdigest(),
-    "luvchik@drishiti.com": hashlib.sha256("admin123".encode()).hexdigest(),
+    "luvchik@drishti.com": hashlib.sha256("admin123".encode()).hexdigest(),
 }
 
 # Developer emails (can see login logs)
-DEVELOPER_EMAILS = ["luvchik@drishiti.com"]
+DEVELOPER_EMAILS = ["luvchik@drishti.com"]
 
 # Login tracking
 LOGIN_LOG_FILE = os.path.join(os.path.dirname(__file__), "login_logs.json")
