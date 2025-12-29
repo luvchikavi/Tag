@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
+import hashlib
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -22,6 +23,61 @@ load_dotenv()
 
 # Monday.com API Token (can also be set via .env file)
 MONDAY_API_TOKEN = os.getenv("MONDAY_API_TOKEN", "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjYwMTM4MjQ2OSwiYWFpIjoxMSwidWlkIjo2MTY0NDEzOSwiaWFkIjoiMjAyNS0xMi0yOFQxNTo0MDo1Mi4yMjVaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjM2NzMyOTgsInJnbiI6ImV1YzEifQ.-rwpvYCc9YCxYJ_y5oTgfM8AC9jJvRmw4rjPe1mK9Q4")
+
+# Authorized users (email: password_hash)
+# Password: TAG2025! (hashed)
+AUTHORIZED_USERS = {
+    "gvili@tagaurbanic.com": hashlib.sha256("TAG2025!".encode()).hexdigest(),
+    "admin@drishti.com": hashlib.sha256("admin123".encode()).hexdigest(),
+}
+
+
+def check_authentication():
+    """Check if user is authenticated"""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.user_email = None
+    return st.session_state.authenticated
+
+
+def login_page():
+    """Display login page"""
+    st.markdown("""
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+
+    with col2:
+        st.markdown("## Sales Dashboard")
+        st.markdown("### Login")
+
+        email = st.text_input("Email", placeholder="Enter your email")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
+
+        if st.button("Login", use_container_width=True, type="primary"):
+            email_lower = email.lower().strip()
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+            if email_lower in AUTHORIZED_USERS and AUTHORIZED_USERS[email_lower] == password_hash:
+                st.session_state.authenticated = True
+                st.session_state.user_email = email_lower
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid email or password")
+
+        st.markdown("---")
+        st.caption("Contact administrator for access")
 
 # Page configuration
 st.set_page_config(
@@ -505,7 +561,7 @@ def render_sheet_viewer():
 
 
 def render_kpi_cards(data: dict):
-    """Render main KPI cards at the top of the dashboard"""
+    """Render compact KPI header strip at the top of the dashboard"""
     projects_df = data.get('projects', pd.DataFrame())
 
     if projects_df.empty:
@@ -527,10 +583,6 @@ def render_kpi_cards(data: dict):
     predicted_col = [c for c in projects_df.columns if 'Predicted' in c]
     predicted_income = pd.to_numeric(projects_df[predicted_col[0]], errors='coerce').sum() if predicted_col else 0
 
-    # Average price
-    avg_price_col = [c for c in projects_df.columns if 'Average price' in c]
-    avg_price = pd.to_numeric(projects_df[avg_price_col[0]], errors='coerce').mean() if avg_price_col else 0
-
     # 2025 Targets
     targets_col = [c for c in projects_df.columns if 'Sales targets for 2025' in c]
     targets_2025 = pd.to_numeric(projects_df[targets_col[0]], errors='coerce').sum() if targets_col else 0
@@ -539,55 +591,155 @@ def render_kpi_cards(data: dict):
     signed_2025 = pd.to_numeric(projects_df[signed_col[0]], errors='coerce').sum() if signed_col else 0
 
     year_goal_pct = signed_2025 / targets_2025 if targets_2025 > 0 else 0
-
-    # Sales percentage
     sales_pct = units_sold / total_units if total_units > 0 else 0
 
-    # Display KPIs - Row 1: Units Overview
-    st.subheader("Units Overview")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # Get additional metrics
+    avg_price_col = [c for c in projects_df.columns if 'Average price' in c]
+    avg_price = pd.to_numeric(projects_df[avg_price_col[0]], errors='coerce').mean() if avg_price_col else 0
 
-    with col1:
-        st.metric(label="Total Units", value=format_number(total_units))
-    with col2:
-        st.metric(label="Units Sold (CPCV)", value=format_number(units_sold), delta=f"{sales_pct:.2%} sold")
-    with col3:
-        st.metric(label="Blocked", value=format_number(units_blocked))
-    with col4:
-        st.metric(label="Reserved", value=format_number(units_reserved))
-    with col5:
-        st.metric(label="Available Inventory", value=format_number(inventory))
+    sqm_col = [c for c in projects_df.columns if '€/m²' in c and 'SOLD' in c]
+    avg_sqm = pd.to_numeric(projects_df[sqm_col[0]], errors='coerce').mean() if sqm_col else 0
 
-    # Row 2: Financial Overview
-    st.subheader("Financial Overview")
-    col1, col2, col3, col4 = st.columns(4)
+    # Compact Dashboard Header Strip - Two Rows with Labels
+    st.markdown("""
+    <style>
+        .kpi-container {
+            background: linear-gradient(135deg, #1f77b4 0%, #2ecc71 100%);
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            color: white;
+        }
+        .kpi-row {
+            display: flex;
+            align-items: center;
+            gap: 0;
+        }
+        .kpi-row:first-child {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        .kpi-row-label {
+            min-width: 120px;
+            padding-right: 15px;
+            border-right: 2px solid rgba(255,255,255,0.3);
+            margin-right: 10px;
+        }
+        .kpi-row-label p {
+            margin: 0;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.95;
+        }
+        .kpi-boxes {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+        }
+        .kpi-box {
+            text-align: center;
+            padding: 6px 20px;
+            min-width: 100px;
+            border-right: 1px solid rgba(255,255,255,0.25);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .kpi-box:last-child {
+            border-right: none;
+        }
+        .kpi-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .kpi-label {
+            font-size: 0.65rem;
+            opacity: 0.9;
+            margin: 2px 0 0 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .kpi-sub {
+            font-size: 0.6rem;
+            opacity: 0.75;
+            margin: 0;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
-    with col1:
-        st.metric(label="Total Revenue (CPCV)", value=format_currency(total_revenue))
-    with col2:
-        st.metric(label="Predicted Income", value=format_currency(predicted_income))
-    with col3:
-        st.metric(label="Avg Price per Unit", value=format_currency(avg_price))
-    with col4:
-        # Average €/m²
-        sqm_col = [c for c in projects_df.columns if '€/m²' in c and 'SOLD' in c]
-        if sqm_col:
-            avg_sqm = pd.to_numeric(projects_df[sqm_col[0]], errors='coerce').mean()
-            st.metric(label="Avg €/m² (Sold)", value=format_currency(avg_sqm))
+    # Format values for display
+    revenue_display = f"€{total_revenue/1_000_000:.0f}M" if total_revenue >= 1_000_000 else f"€{total_revenue:,.0f}"
+    predicted_display = f"€{predicted_income/1_000_000:.0f}M" if predicted_income >= 1_000_000 else f"€{predicted_income:,.0f}"
+    avg_price_display = f"€{avg_price/1_000:.0f}K" if avg_price >= 1_000 else f"€{avg_price:,.0f}"
+    avg_sqm_display = f"€{avg_sqm:,.0f}"
 
-    # Row 3: 2025 Sales Performance
-    st.subheader("2025 Sales Performance")
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric(label="2025 Sales Target", value=format_number(targets_2025))
-    with col2:
-        st.metric(label="CPCV Signed in 2025", value=format_number(signed_2025))
-    with col3:
-        st.metric(label="% of Year Goal", value=f"{year_goal_pct:.2%}")
-    with col4:
-        remaining = targets_2025 - signed_2025
-        st.metric(label="Remaining to Target", value=format_number(remaining))
+    st.markdown(f"""
+    <div class="kpi-container">
+        <div class="kpi-row">
+            <div class="kpi-row-label">
+                <p>Units<br/>Overview</p>
+            </div>
+            <div class="kpi-boxes">
+                <div class="kpi-box">
+                    <p class="kpi-value">{int(total_units):,}</p>
+                    <p class="kpi-label">Total Units</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{int(units_sold):,}</p>
+                    <p class="kpi-label">Sold (CPCV)</p>
+                    <p class="kpi-sub">{sales_pct:.1%}</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{int(units_blocked):,}</p>
+                    <p class="kpi-label">Blocked</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{int(units_reserved):,}</p>
+                    <p class="kpi-label">Reserved</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{int(inventory):,}</p>
+                    <p class="kpi-label">Available</p>
+                </div>
+            </div>
+        </div>
+        <div class="kpi-row">
+            <div class="kpi-row-label">
+                <p>Financial<br/>Summary</p>
+            </div>
+            <div class="kpi-boxes">
+                <div class="kpi-box">
+                    <p class="kpi-value">{revenue_display}</p>
+                    <p class="kpi-label">Revenue</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{predicted_display}</p>
+                    <p class="kpi-label">Predicted</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{avg_price_display}</p>
+                    <p class="kpi-label">Avg Price</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{avg_sqm_display}</p>
+                    <p class="kpi-label">Avg €/m²</p>
+                </div>
+                <div class="kpi-box">
+                    <p class="kpi-value">{year_goal_pct:.0%}</p>
+                    <p class="kpi-label">2025 Goal</p>
+                    <p class="kpi-sub">{int(signed_2025):,} / {int(targets_2025):,}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def render_project_overview(data: dict):
@@ -939,14 +1091,278 @@ def render_broker_performance(data: dict):
         st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
 
 
+def render_decision_making_tool(data: dict):
+    """Render the Decision Making Tool tab with scenario analysis"""
+    st.subheader("Decision Making Tool")
+    st.markdown("Analyze different scenarios and forecast outcomes for your real estate portfolio.")
+
+    projects_df = data.get('projects', pd.DataFrame())
+
+    if projects_df.empty:
+        st.warning("No project data available for analysis")
+        return
+
+    # Current Portfolio Summary
+    st.markdown("### Current Portfolio Summary")
+
+    total_units = pd.to_numeric(projects_df['Total Units'], errors='coerce').sum()
+    units_sold = pd.to_numeric(projects_df['# Units CPCV'], errors='coerce').sum()
+    inventory = pd.to_numeric(projects_df['Inventory balance'], errors='coerce').sum()
+
+    revenue_col = [c for c in projects_df.columns if 'Total revenue' in c]
+    total_revenue = pd.to_numeric(projects_df[revenue_col[0]], errors='coerce').sum() if revenue_col else 0
+
+    predicted_col = [c for c in projects_df.columns if 'Predicted' in c]
+    predicted_income = pd.to_numeric(projects_df[predicted_col[0]], errors='coerce').sum() if predicted_col else 0
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Units", f"{int(total_units):,}")
+    with col2:
+        st.metric("Units Sold", f"{int(units_sold):,}")
+    with col3:
+        st.metric("Available Inventory", f"{int(inventory):,}")
+    with col4:
+        st.metric("Current Revenue", f"€{total_revenue:,.0f}")
+
+    st.markdown("---")
+
+    # Scenario Analysis
+    st.markdown("### Scenario Analysis")
+
+    tab1, tab2, tab3 = st.tabs(["Sales Forecast", "Price Sensitivity", "Project Comparison"])
+
+    with tab1:
+        st.markdown("#### Sales Velocity Forecast")
+        st.markdown("Estimate time to sell remaining inventory based on different sales rates.")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            monthly_sales_rate = st.slider(
+                "Monthly Sales Rate (units/month)",
+                min_value=1,
+                max_value=50,
+                value=10,
+                help="Expected number of units sold per month"
+            )
+
+            avg_price_col = [c for c in projects_df.columns if 'Average price' in c]
+            current_avg_price = pd.to_numeric(projects_df[avg_price_col[0]], errors='coerce').mean() if avg_price_col else 300000
+
+            avg_price = st.number_input(
+                "Average Price per Unit (€)",
+                min_value=100000,
+                max_value=2000000,
+                value=int(current_avg_price),
+                step=10000
+            )
+
+        with col2:
+            if inventory > 0 and monthly_sales_rate > 0:
+                months_to_sell = inventory / monthly_sales_rate
+                projected_revenue = inventory * avg_price
+
+                st.metric("Months to Sell Inventory", f"{months_to_sell:.1f}")
+                st.metric("Projected Revenue (Remaining)", f"€{projected_revenue:,.0f}")
+                st.metric("Monthly Revenue Forecast", f"€{monthly_sales_rate * avg_price:,.0f}")
+
+        # Forecast Chart
+        if inventory > 0:
+            months = list(range(0, int(inventory / monthly_sales_rate) + 2))
+            remaining_units = [max(0, inventory - (m * monthly_sales_rate)) for m in months]
+            cumulative_revenue = [min(inventory, m * monthly_sales_rate) * avg_price for m in months]
+
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+            fig.add_trace(
+                go.Scatter(x=months, y=remaining_units, name="Remaining Units",
+                          line=dict(color="#e74c3c", width=3)),
+                secondary_y=False
+            )
+
+            fig.add_trace(
+                go.Scatter(x=months, y=cumulative_revenue, name="Cumulative Revenue",
+                          line=dict(color="#27ae60", width=3)),
+                secondary_y=True
+            )
+
+            fig.update_layout(
+                title="Sales Forecast Over Time",
+                xaxis_title="Months",
+                height=400
+            )
+            fig.update_yaxes(title_text="Units", secondary_y=False)
+            fig.update_yaxes(title_text="Revenue (€)", secondary_y=True)
+
+            st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        st.markdown("#### Price Sensitivity Analysis")
+        st.markdown("See how price changes affect total revenue and sales velocity.")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            price_change = st.slider(
+                "Price Change (%)",
+                min_value=-30,
+                max_value=30,
+                value=0,
+                step=5,
+                help="Adjust average price up or down"
+            )
+
+            # Elasticity assumption: for every 5% price increase, sales slow by 10%
+            elasticity = st.slider(
+                "Demand Elasticity",
+                min_value=0.5,
+                max_value=3.0,
+                value=1.5,
+                step=0.1,
+                help="How sensitive is demand to price changes (higher = more sensitive)"
+            )
+
+        base_price = current_avg_price if 'current_avg_price' in dir() else 300000
+        new_price = base_price * (1 + price_change / 100)
+        sales_impact = 1 - (price_change / 100 * elasticity)
+        adjusted_monthly_sales = max(1, 10 * sales_impact)
+
+        with col2:
+            st.metric("New Average Price", f"€{new_price:,.0f}", delta=f"{price_change:+}%")
+            st.metric("Adjusted Monthly Sales", f"{adjusted_monthly_sales:.1f} units",
+                     delta=f"{(sales_impact - 1) * 100:+.1f}%")
+            new_monthly_revenue = new_price * adjusted_monthly_sales
+            st.metric("Monthly Revenue Impact", f"€{new_monthly_revenue:,.0f}")
+
+        # Price scenarios comparison
+        scenarios = []
+        for pct in [-20, -10, 0, 10, 20]:
+            scenario_price = base_price * (1 + pct / 100)
+            scenario_sales = max(1, 10 * (1 - pct / 100 * elasticity))
+            scenario_revenue = scenario_price * scenario_sales * inventory / scenario_sales if scenario_sales > 0 else 0
+            scenarios.append({
+                "Price Change": f"{pct:+}%",
+                "Unit Price": f"€{scenario_price:,.0f}",
+                "Monthly Sales": f"{scenario_sales:.1f}",
+                "Total Revenue": f"€{scenario_revenue:,.0f}"
+            })
+
+        st.markdown("#### Scenario Comparison")
+        st.dataframe(pd.DataFrame(scenarios), use_container_width=True, hide_index=True)
+
+    with tab3:
+        st.markdown("#### Project Performance Comparison")
+
+        # Project selection
+        project_names = projects_df['Project'].dropna().tolist()
+        selected_projects = st.multiselect(
+            "Select Projects to Compare",
+            options=project_names,
+            default=project_names[:5] if len(project_names) >= 5 else project_names
+        )
+
+        if selected_projects:
+            comparison_df = projects_df[projects_df['Project'].isin(selected_projects)].copy()
+
+            # Calculate metrics for comparison
+            comparison_data = []
+            for _, row in comparison_df.iterrows():
+                total = pd.to_numeric(row.get('Total Units', 0), errors='coerce') or 0
+                sold = pd.to_numeric(row.get('# Units CPCV', 0), errors='coerce') or 0
+                pct_sold = sold / total if total > 0 else 0
+
+                revenue_col = [c for c in row.index if 'Total revenue' in c]
+                revenue = pd.to_numeric(row[revenue_col[0]], errors='coerce') if revenue_col else 0
+
+                sqm_col = [c for c in row.index if '€/m²' in c and 'SOLD' in c]
+                sqm_price = pd.to_numeric(row[sqm_col[0]], errors='coerce') if sqm_col else 0
+
+                comparison_data.append({
+                    "Project": row['Project'],
+                    "Total Units": int(total) if pd.notna(total) else 0,
+                    "Sold": int(sold) if pd.notna(sold) else 0,
+                    "% Sold": f"{pct_sold:.1%}",
+                    "Revenue": revenue if pd.notna(revenue) else 0,
+                    "€/m²": sqm_price if pd.notna(sqm_price) else 0
+                })
+
+            comp_df = pd.DataFrame(comparison_data)
+
+            # Performance chart
+            fig = go.Figure()
+
+            fig.add_trace(go.Bar(
+                name='Sold',
+                x=comp_df['Project'],
+                y=comp_df['Sold'],
+                marker_color='#27ae60'
+            ))
+
+            fig.add_trace(go.Bar(
+                name='Remaining',
+                x=comp_df['Project'],
+                y=comp_df['Total Units'] - comp_df['Sold'],
+                marker_color='#3498db'
+            ))
+
+            fig.update_layout(
+                barmode='stack',
+                title='Units by Project',
+                xaxis_title='Project',
+                yaxis_title='Units',
+                height=400
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Comparison table
+            st.markdown("#### Detailed Comparison")
+            display_df = comp_df.copy()
+            display_df['Revenue'] = display_df['Revenue'].apply(lambda x: f"€{x:,.0f}" if x > 0 else "-")
+            display_df['€/m²'] = display_df['€/m²'].apply(lambda x: f"€{x:,.0f}" if x > 0 else "-")
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # What-If Calculator
+    st.markdown("### What-If Calculator")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        new_units = st.number_input("Add New Units to Portfolio", min_value=0, max_value=500, value=0)
+        new_unit_price = st.number_input("Price per New Unit (€)", min_value=100000, max_value=2000000, value=350000, step=10000)
+
+    with col2:
+        price_adjustment = st.number_input("Portfolio Price Adjustment (%)", min_value=-50, max_value=50, value=0)
+        marketing_boost = st.slider("Marketing Investment Impact (%)", min_value=0, max_value=100, value=0,
+                                   help="Expected increase in sales velocity from marketing")
+
+    with col3:
+        # Calculate projections
+        new_total_units = total_units + new_units
+        new_inventory = inventory + new_units
+        adjusted_revenue = predicted_income * (1 + price_adjustment / 100)
+        new_revenue_potential = new_units * new_unit_price
+        total_projected_revenue = adjusted_revenue + new_revenue_potential
+
+        st.metric("New Total Units", f"{int(new_total_units):,}")
+        st.metric("New Inventory", f"{int(new_inventory):,}")
+        st.metric("Projected Total Revenue", f"€{total_projected_revenue:,.0f}")
+
+        if marketing_boost > 0:
+            boosted_monthly_sales = 10 * (1 + marketing_boost / 100)
+            st.metric("Boosted Monthly Sales", f"{boosted_monthly_sales:.1f} units")
+
+
 def render_monday_sync_tab():
-    """Render the Monday.com sync tab with controls and change log"""
+    """Render the Monday.com sync tab with data from Monday.com (read-only)"""
     st.subheader("Monday.com Data Sync")
 
-    # Warning about Excel modifications
-    st.warning("""
-    **Important:** Syncing will modify the Excel file. A backup will be automatically created
-    in the `backups/` folder before any changes are made.
+    st.info("""
+    **Read-Only Mode:** This dashboard displays data from Monday.com.
+    The Excel file is the local copy that reflects Monday.com data.
     """)
 
     # Initialize sync components
@@ -1130,10 +1546,20 @@ def render_monday_sync_tab():
 def render_sidebar():
     """Render sidebar with settings and filters"""
     st.sidebar.title("Sales Dashboard")
+
+    # User info and logout
+    if st.session_state.get("authenticated") and st.session_state.get("user_email"):
+        st.sidebar.markdown(f"**Logged in as:**")
+        st.sidebar.text(st.session_state.user_email)
+        if st.sidebar.button("Logout", use_container_width=True, type="secondary"):
+            st.session_state.authenticated = False
+            st.session_state.user_email = None
+            st.rerun()
+
     st.sidebar.markdown("---")
 
     # Refresh data button
-    if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    if st.sidebar.button("Refresh Data", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -1204,6 +1630,11 @@ def render_sidebar():
 
 def main():
     """Main application entry point"""
+    # Check authentication first
+    if not check_authentication():
+        login_page()
+        return
+
     # Header
     st.markdown('<h1 class="main-header">Sales Dashboard</h1>', unsafe_allow_html=True)
     st.markdown("Real Estate Development - Portugal")
@@ -1212,23 +1643,23 @@ def main():
     # Sidebar
     use_monday = render_sidebar()
 
-    # Main tabs
-    tab_dashboard, tab_workplan, tab_sheets, tab_sync = st.tabs([
+    # Main tabs (WorkPlan 2026 removed, Decision Making Tool added)
+    tab_dashboard, tab_decision, tab_sheets, tab_sync = st.tabs([
         "📊 Sales Dashboard",
-        "📋 WorkPlan 2026",
+        "🎯 Decision Making",
         "📁 Project Sheets",
         "🔄 Monday.com Sync"
     ])
 
+    # Load data once for all tabs
+    with st.spinner("Loading data..."):
+        data = load_data(use_monday)
+
+    if data is None:
+        st.error("Could not load data. Please check the data source configuration.")
+        return
+
     with tab_dashboard:
-        # Load data
-        with st.spinner("Loading data..."):
-            data = load_data(use_monday)
-
-        if data is None:
-            st.error("Could not load data. Please check the data source configuration.")
-            return
-
         # Render dashboard sections
         render_kpi_cards(data)
         st.markdown("---")
@@ -1241,8 +1672,8 @@ def main():
 
         render_broker_performance(data)
 
-    with tab_workplan:
-        render_workplan_dashboard()
+    with tab_decision:
+        render_decision_making_tool(data)
 
     with tab_sheets:
         render_sheet_viewer()
@@ -1250,9 +1681,54 @@ def main():
     with tab_sync:
         render_monday_sync_tab()
 
-    # Footer
-    st.markdown("---")
-    st.caption("Built and Designed by Drishti Consulting | © All Rights Reserved 2025")
+    # Minimal Footer
+    st.markdown("""
+    <style>
+        .minimal-footer {
+            margin-top: 40px;
+            padding: 20px 0;
+            border-top: 2px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .footer-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .footer-logo {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, #1f77b4, #2ecc71);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .footer-company {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #333;
+        }
+        .footer-right {
+            font-size: 0.8rem;
+            color: #888;
+        }
+    </style>
+    <div class="minimal-footer">
+        <div class="footer-left">
+            <div class="footer-logo">D</div>
+            <span class="footer-company">Drishti Consulting</span>
+        </div>
+        <div class="footer-right">
+            © 2025 All Rights Reserved
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
