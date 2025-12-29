@@ -451,6 +451,254 @@ def load_sheet_data(sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+def load_all_project_data() -> pd.DataFrame:
+    """Load and combine data from all project sheets for cross-section analysis"""
+    excel_path = os.path.join(os.path.dirname(__file__), "Sales.xlsx")
+    if not os.path.exists(excel_path):
+        return pd.DataFrame()
+
+    xl = pd.ExcelFile(excel_path)
+    all_data = []
+
+    # Valid status values
+    VALID_STATUSES = ['CPCV', 'RESERVED', 'AVAILABLE', 'BLOCKED', 'SOLD', 'CANCELLED']
+
+    for sheet in xl.sheet_names:
+        if sheet == "sales report - general":
+            continue
+
+        try:
+            df = pd.read_excel(excel_path, sheet_name=sheet)
+            df.columns = [str(c).replace('\n', ' ').strip() for c in df.columns]
+
+            # Add project name
+            df['Project'] = sheet
+
+            # Filter to only rows with valid Status
+            if 'Status' in df.columns:
+                df = df[df['Status'].apply(lambda x: isinstance(x, str) and x.upper() in VALID_STATUSES)]
+
+            if not df.empty:
+                all_data.append(df)
+        except Exception:
+            continue
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        return combined
+    return pd.DataFrame()
+
+
+def render_cross_section_analysis():
+    """Render cross-section analysis charts"""
+    st.subheader("Cross-Section Analysis")
+
+    # Load all project data
+    with st.spinner("Loading cross-section data..."):
+        df = load_all_project_data()
+
+    if df.empty:
+        st.warning("No data available for cross-section analysis")
+        return
+
+    # Create tabs for different analyses
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Price/m² by Status",
+        "Typology by Status",
+        "Nationality by Year",
+        "Nationality by Project",
+        "Price by Typology"
+    ])
+
+    with tab1:
+        # Average price per m² by Status
+        st.markdown("#### Average Price per m² by Status")
+        if '€/m² sold' in df.columns and 'Status' in df.columns:
+            price_by_status = df.groupby('Status')['€/m² sold'].agg(['mean', 'count']).reset_index()
+            price_by_status.columns = ['Status', 'Avg €/m²', 'Count']
+            price_by_status = price_by_status[price_by_status['Count'] > 0]
+            price_by_status['Avg €/m²'] = pd.to_numeric(price_by_status['Avg €/m²'], errors='coerce')
+            price_by_status = price_by_status.dropna()
+
+            if not price_by_status.empty:
+                fig = px.bar(
+                    price_by_status,
+                    x='Status',
+                    y='Avg €/m²',
+                    color='Status',
+                    text=price_by_status['Avg €/m²'].apply(lambda x: f'€{x:,.0f}'),
+                    title='Average Price per m² by Unit Status'
+                )
+                fig.update_traces(textposition='outside')
+                fig.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Show data table
+                display_df = price_by_status.copy()
+                display_df['Avg €/m²'] = display_df['Avg €/m²'].apply(lambda x: f'€{x:,.0f}')
+                display_df['Count'] = display_df['Count'].apply(lambda x: f'{int(x):,}')
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No price data available by status")
+        else:
+            st.info("Required columns not found")
+
+    with tab2:
+        # Typology (Layout) by Status
+        st.markdown("#### Unit Typology Distribution by Status")
+        if 'Layout' in df.columns and 'Status' in df.columns:
+            # Filter to valid layouts
+            valid_layouts = df[df['Layout'].apply(lambda x: isinstance(x, str) and x.startswith('T'))]
+
+            if not valid_layouts.empty:
+                typology_status = valid_layouts.groupby(['Layout', 'Status']).size().reset_index(name='Count')
+
+                fig = px.bar(
+                    typology_status,
+                    x='Layout',
+                    y='Count',
+                    color='Status',
+                    barmode='group',
+                    title='Unit Count by Typology and Status'
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Pivot table
+                pivot = valid_layouts.pivot_table(
+                    index='Layout',
+                    columns='Status',
+                    aggfunc='size',
+                    fill_value=0
+                ).reset_index()
+                st.dataframe(pivot, use_container_width=True, hide_index=True)
+            else:
+                st.info("No valid typology data available")
+        else:
+            st.info("Required columns not found")
+
+    with tab3:
+        # Buyer Nationality by Year
+        st.markdown("#### Buyer Nationality Trends by Year")
+        if 'Client Nationality' in df.columns and 'Date of CPCV' in df.columns:
+            # Extract year from CPCV date
+            df_dated = df.copy()
+            df_dated['CPCV Date'] = pd.to_datetime(df_dated['Date of CPCV'], errors='coerce')
+            df_dated['Year'] = df_dated['CPCV Date'].dt.year
+            df_dated = df_dated.dropna(subset=['Year', 'Client Nationality'])
+            df_dated = df_dated[df_dated['Client Nationality'].apply(lambda x: isinstance(x, str) and len(x) > 1)]
+
+            if not df_dated.empty:
+                nationality_year = df_dated.groupby(['Year', 'Client Nationality']).size().reset_index(name='Count')
+                nationality_year['Year'] = nationality_year['Year'].astype(int)
+
+                fig = px.bar(
+                    nationality_year,
+                    x='Year',
+                    y='Count',
+                    color='Client Nationality',
+                    barmode='stack',
+                    title='Buyer Nationality Distribution by Year'
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Summary table
+                pivot = df_dated.pivot_table(
+                    index='Client Nationality',
+                    columns='Year',
+                    aggfunc='size',
+                    fill_value=0
+                ).reset_index()
+                pivot.columns = [str(c) for c in pivot.columns]
+                st.dataframe(pivot, use_container_width=True, hide_index=True)
+            else:
+                st.info("No dated nationality data available")
+        else:
+            st.info("Required columns not found")
+
+    with tab4:
+        # Buyer Nationality by Project
+        st.markdown("#### Buyer Nationality Distribution by Project")
+        if 'Client Nationality' in df.columns and 'Project' in df.columns:
+            df_nat = df[df['Client Nationality'].apply(lambda x: isinstance(x, str) and len(x) > 1)]
+
+            if not df_nat.empty:
+                nationality_project = df_nat.groupby(['Project', 'Client Nationality']).size().reset_index(name='Count')
+
+                fig = px.bar(
+                    nationality_project,
+                    x='Project',
+                    y='Count',
+                    color='Client Nationality',
+                    barmode='stack',
+                    title='Buyer Nationality by Project'
+                )
+                fig.update_layout(height=450, xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Pivot table
+                pivot = df_nat.pivot_table(
+                    index='Project',
+                    columns='Client Nationality',
+                    aggfunc='size',
+                    fill_value=0
+                ).reset_index()
+                st.dataframe(pivot, use_container_width=True, hide_index=True, height=400)
+            else:
+                st.info("No nationality data available")
+        else:
+            st.info("Required columns not found")
+
+    with tab5:
+        # Average price per apartment by Typology and Status
+        st.markdown("#### Average Price per Apartment by Typology and Status")
+        if 'Layout' in df.columns and 'Status' in df.columns and 'Closing Price' in df.columns:
+            # Filter to valid layouts and prices
+            df_price = df.copy()
+            df_price = df_price[df_price['Layout'].apply(lambda x: isinstance(x, str) and x.startswith('T'))]
+            df_price['Closing Price'] = pd.to_numeric(df_price['Closing Price'], errors='coerce')
+            df_price = df_price.dropna(subset=['Closing Price'])
+            df_price = df_price[df_price['Closing Price'] > 0]
+
+            if not df_price.empty:
+                price_typology = df_price.groupby(['Layout', 'Status'])['Closing Price'].mean().reset_index()
+                price_typology.columns = ['Typology', 'Status', 'Avg Price']
+
+                fig = px.bar(
+                    price_typology,
+                    x='Typology',
+                    y='Avg Price',
+                    color='Status',
+                    barmode='group',
+                    title='Average Closing Price by Typology and Status',
+                    text=price_typology['Avg Price'].apply(lambda x: f'€{x/1000:.0f}K')
+                )
+                fig.update_traces(textposition='outside')
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Pivot table with formatted prices
+                pivot = df_price.pivot_table(
+                    index='Layout',
+                    columns='Status',
+                    values='Closing Price',
+                    aggfunc='mean'
+                ).reset_index()
+                pivot.columns = [str(c) for c in pivot.columns]
+
+                # Format prices
+                for col in pivot.columns:
+                    if col != 'Layout':
+                        pivot[col] = pivot[col].apply(lambda x: f'€{x:,.0f}' if pd.notna(x) else '-')
+
+                st.dataframe(pivot, use_container_width=True, hide_index=True)
+            else:
+                st.info("No price data available by typology")
+        else:
+            st.info("Required columns not found")
+
+
 def render_sheet_viewer():
     """Render the Excel sheet viewer section"""
     st.subheader("Project Details - Excel Sheets")
@@ -460,10 +708,17 @@ def render_sheet_viewer():
         st.warning("No Excel sheets found")
         return
 
+    # Filter out the dashboard sheet - it has its own tab
+    project_sheets = [s for s in sheets if s != "sales report - general"]
+
+    if not project_sheets:
+        st.warning("No project sheets found")
+        return
+
     # Sheet selector
     selected_sheet = st.selectbox(
-        "Select a sheet to view:",
-        sheets,
+        "Select a project to view:",
+        project_sheets,
         index=0
     )
 
@@ -474,6 +729,13 @@ def render_sheet_viewer():
         if df.empty:
             st.warning("No data in this sheet")
             return
+
+        # Valid status values for filtering
+        VALID_STATUSES = ['CPCV', 'RESERVED', 'AVAILABLE', 'BLOCKED', 'SOLD', 'CANCELLED',
+                         'Available', 'Reserved', 'Blocked', 'Sold', 'Cancelled']
+
+        # Valid layout/typology patterns
+        VALID_LAYOUTS = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'STORE', 'SHOP', 'OFFICE']
 
         # Show sheet info
         col1, col2, col3 = st.columns(3)
@@ -486,66 +748,68 @@ def render_sheet_viewer():
             non_empty = df.notna().sum().sum()
             st.metric("Data Points", format_number(non_empty))
 
-        # Filter options for project sheets (not the main sales report)
-        if selected_sheet != "sales report - general":
-            st.markdown("#### Filters")
+        st.markdown("#### Filters")
 
-            filter_cols = st.columns(3)
+        filter_cols = st.columns(3)
 
-            # Status filter if available
-            status_col = None
-            for col in df.columns:
-                if 'status' in col.lower() or 'estado' in col.lower():
-                    status_col = col
-                    break
+        # Status filter if available
+        status_col = None
+        for col in df.columns:
+            if col.lower() == 'status':
+                status_col = col
+                break
 
-            filtered_df = df.copy()
+        filtered_df = df.copy()
 
-            with filter_cols[0]:
-                if status_col and status_col in df.columns:
-                    statuses = df[status_col].dropna().unique().tolist()
-                    if statuses:
-                        selected_status = st.multiselect(
-                            "Filter by Status:",
-                            options=statuses,
-                            default=[]
-                        )
-                        if selected_status:
-                            filtered_df = filtered_df[filtered_df[status_col].isin(selected_status)]
+        with filter_cols[0]:
+            if status_col and status_col in df.columns:
+                # Only include valid status values
+                raw_statuses = df[status_col].dropna().unique().tolist()
+                statuses = [s for s in raw_statuses if isinstance(s, str) and s.upper() in [v.upper() for v in VALID_STATUSES]]
+                if statuses:
+                    selected_status = st.multiselect(
+                        "Filter by Status:",
+                        options=sorted(set(statuses)),
+                        default=[]
+                    )
+                    if selected_status:
+                        filtered_df = filtered_df[filtered_df[status_col].isin(selected_status)]
 
-            with filter_cols[1]:
-                if 'Floor' in df.columns:
-                    floors = df['Floor'].dropna().unique().tolist()
-                    if floors:
-                        # Convert all to string for sorting to avoid type errors
-                        floors_str = sorted([str(f) for f in floors if pd.notna(f)])
-                        selected_floors = st.multiselect(
-                            "Filter by Floor:",
-                            options=floors_str,
-                            default=[]
-                        )
-                        if selected_floors:
-                            filtered_df = filtered_df[filtered_df['Floor'].astype(str).isin(selected_floors)]
+        with filter_cols[1]:
+            if 'Floor' in df.columns:
+                # Only include numeric floor values
+                floors = df['Floor'].dropna().unique().tolist()
+                valid_floors = [f for f in floors if isinstance(f, (int, float)) or (isinstance(f, str) and f.replace('-', '').isdigit())]
+                if valid_floors:
+                    floors_str = sorted([str(int(f)) if isinstance(f, float) else str(f) for f in valid_floors], key=lambda x: int(x) if x.lstrip('-').isdigit() else 999)
+                    selected_floors = st.multiselect(
+                        "Filter by Floor:",
+                        options=floors_str,
+                        default=[]
+                    )
+                    if selected_floors:
+                        filtered_df = filtered_df[filtered_df['Floor'].astype(str).str.replace('.0', '', regex=False).isin(selected_floors)]
 
-            with filter_cols[2]:
-                if 'Layout' in df.columns:
-                    layouts = df['Layout'].dropna().unique().tolist()
-                    if layouts:
-                        # Convert all to string for sorting to avoid type errors
-                        layouts_str = sorted([str(l) for l in layouts if pd.notna(l)])
-                        selected_layouts = st.multiselect(
-                            "Filter by Layout:",
-                            options=layouts_str,
-                            default=[]
-                        )
-                        if selected_layouts:
-                            filtered_df = filtered_df[filtered_df['Layout'].astype(str).isin(selected_layouts)]
+        with filter_cols[2]:
+            if 'Layout' in df.columns:
+                # Only include valid layout patterns (T0, T1, T2, etc.)
+                layouts = df['Layout'].dropna().unique().tolist()
+                valid_layouts = [l for l in layouts if isinstance(l, str) and any(l.upper().startswith(v) for v in VALID_LAYOUTS)]
+                if valid_layouts:
+                    layouts_str = sorted(set(valid_layouts))
+                    selected_layouts = st.multiselect(
+                        "Filter by Layout:",
+                        options=layouts_str,
+                        default=[]
+                    )
+                    if selected_layouts:
+                        filtered_df = filtered_df[filtered_df['Layout'].isin(selected_layouts)]
 
-            # Show filtered count
-            if len(filtered_df) != len(df):
-                st.info(f"Showing {len(filtered_df)} of {len(df)} rows")
+        # Show filtered count
+        if len(filtered_df) != len(df):
+            st.info(f"Showing {len(filtered_df)} of {len(df)} rows")
 
-            df = filtered_df
+        df = filtered_df
 
         # Format all columns for display
         display_df = format_dataframe(df)
@@ -653,11 +917,12 @@ def render_kpi_cards(data: dict):
             text-align: center;
             padding: 6px 20px;
             min-width: 100px;
+            height: 60px;
             border-right: 1px solid rgba(255,255,255,0.25);
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
         }
         .kpi-box:last-child {
             border-right: none;
@@ -679,6 +944,10 @@ def render_kpi_cards(data: dict):
             font-size: 0.6rem;
             opacity: 0.75;
             margin: 0;
+            height: 14px;
+        }
+        .kpi-sub-placeholder {
+            height: 14px;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -699,6 +968,7 @@ def render_kpi_cards(data: dict):
                 <div class="kpi-box">
                     <p class="kpi-value">{int(total_units):,}</p>
                     <p class="kpi-label">Total Units</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{int(units_sold):,}</p>
@@ -708,14 +978,17 @@ def render_kpi_cards(data: dict):
                 <div class="kpi-box">
                     <p class="kpi-value">{int(units_blocked):,}</p>
                     <p class="kpi-label">Blocked</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{int(units_reserved):,}</p>
                     <p class="kpi-label">Reserved</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{int(inventory):,}</p>
                     <p class="kpi-label">Available</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
             </div>
         </div>
@@ -727,18 +1000,22 @@ def render_kpi_cards(data: dict):
                 <div class="kpi-box">
                     <p class="kpi-value">{revenue_display}</p>
                     <p class="kpi-label">Revenue</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{predicted_display}</p>
                     <p class="kpi-label">Predicted</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{avg_price_display}</p>
                     <p class="kpi-label">Avg Price</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{avg_sqm_display}</p>
                     <p class="kpi-label">Avg €/m²</p>
+                    <div class="kpi-sub-placeholder"></div>
                 </div>
                 <div class="kpi-box">
                     <p class="kpi-value">{year_goal_pct:.0%}</p>
@@ -1680,6 +1957,9 @@ def main():
         st.markdown("---")
 
         render_broker_performance(data)
+        st.markdown("---")
+
+        render_cross_section_analysis()
 
     with tab_decision:
         render_decision_making_tool(data)
